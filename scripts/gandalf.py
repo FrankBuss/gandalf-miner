@@ -2,11 +2,15 @@ from serial import Serial
 import time
 from time import sleep
 from binascii import unhexlify, hexlify
-import struct
+from struct import pack, unpack
 from avalonHashData import calculateAvalonHashData
 
 start = 0
 ser = Serial(port='COM1', baudrate=115200, timeout=0.5)
+
+# 32 bit word little-endian/big-endian conversion
+def bytereverse(x):
+	return unpack('>I', pack('<I', x))[0]
 
 # low level serial port functions
 def writeByte(byte):
@@ -43,7 +47,7 @@ def configAsic():
 	# clock config, comments copied from datasheet
 	r = 0
 	f = 19
-	od = 3
+	od = 2
 	clock = [
 		1 << 0 |  # Bit[0]:Reserved, should be 1.
 		1 << 1 |  # Bit[1]:clock  configuration  effect  bit,  if  this  bit  is  0,  all  clock  configuration at current transaction is ineffective.
@@ -64,20 +68,17 @@ def configAsic():
 	# 62.5MHz <= XCLKIN*(F+1)/((R+1)*(2^OD)) <= 1000MHz
 	sendWords(clock)
 	
-	startNonce = expectedNonce - 0x200
+	startNonce = bytereverse(expectedNonce) - 0x200
 	sendWords(calculateAvalonHashData(datastr))
-	sendWord(startNonce)
-	sendWord(startNonce)
 	sendWord(startNonce)
 
 def readWords():
 	while True:
 		byte = 0
 		word = 0
-		global start
 		end = time.time()
-		if end - start > 80:
-			print("timeout")
+		if end - start > 40:
+			print("read test end")
 			return
 		for i in range(32):
 			bit = readByte()
@@ -87,10 +88,8 @@ def readWords():
 			else:
 				break
 		if word != 0:
-			end = time.time()
 			print(end - start)
-			start = end
-			print('%08x' % (word - 0x180))
+			print('received: %08x, nonce: %08x' % (word, bytereverse(word - 0x180)))
 
 def avalonTest():
 	# open serial port
@@ -116,11 +115,9 @@ def avalonTest():
 
 	# set reset to 0 at program end
 	writeByte(0x20)
+	sleep(0.3)
 
-# testdata from http://pastebin.com/9p1LALYQ
-#datastr = "00000001ab02cd818b9e567ee21793cddef299feb29ad444a41b85b8000008a300000000c2b620e3758dfcff8bdb2304ae42b91e1e950e71aff797d7b09288fc2b12fcf14dd7f5c71a44b9f200000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000080020000"
-datastr = "00000002b15704f4ecae05d077e54f6ec36da7f20189ef73b77603225ae56d2b00000000bcf59695a4e35a2f7535e1a86b306a3b08c212bf0b833764018fe39f01919381510c28111c0e8a3700000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000080020000"
-# expectedNonce = 0x42a14695
-expectedNonce = 0xb2367128
-
+# testdata from http://bitcoin.stackexchange.com/questions/11452/how-do-i-find-out-what-getwork-would-have-returned-for-an-already-mined-block
+datastr = "00000001ab02cd818b9e567ee21793cddef299feb29ad444a41b85b8000008a300000000c2b620e3758dfcff8bdb2304ae42b91e1e950e71aff797d7b09288fc2b12fcf14dd7f5c71a44b9f200000000000000800000000000000000000000000000000000000000000000000000000000000000000000000000000080020000"
+expectedNonce = 0x9546A142
 avalonTest()

@@ -5,7 +5,7 @@
 # some helper functions are from https://github.com/bitcoin/bitcoin/blob/master/contrib/pyminer/pyminer.py
 # SHA256 implementation as described in the pseudo code at http://en.wikipedia.org/wiki/SHA-2
 
-from struct import pack, unpack
+from struct import unpack
 from binascii import unhexlify, hexlify
 
 # initialize array of round constants
@@ -19,10 +19,6 @@ K = [
 	0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
 	0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
 ]
-
-def bytereverse(x):
-	return uint32(( ((x) << 24) | (((x) << 8) & 0x00ff0000) |
-					(((x) >> 8) & 0x0000ff00) | ((x) >> 24) ))
 
 def uint32(x):
 	return x & 0xffffffff
@@ -85,6 +81,9 @@ def calculateAvalonHashData(datastr):
 	for i in range(16, 64):
 		w[i] = addu32(SIG1(w[i-2]), w[i-7], SIG0(w[i-15]), w[i-16])
 
+
+	# first SHA256 chunk
+	
 	# initialize working variables to current hash value
 	a = h0
 	b = h1
@@ -107,12 +106,6 @@ def calculateAvalonHashData(datastr):
 		c = b
 		b = a
 		a = addu32(t1, t2)
-		if i == 0: a0 = a
-		if i == 1: a1 = a
-		if i == 2: a2 = a
-		if i == 0: e0 = e
-		if i == 1: e1 = e
-		if i == 2: e2 = e
 
 	# add the compressed chunk to the current hash value:
 	h0 = addu32(h0, a)
@@ -126,29 +119,38 @@ def calculateAvalonHashData(datastr):
 	
 	# midstate
 	midstate = [h0, h1, h2, h3, h4, h5, h6, h7]
-	
-	# little endian / big endian ?
-	if False:
-		for i in range(8):
-			midstate[i] = bytereverse(midstate[i])
+
+
+	# second SHA256 chunk
 
 	# extract first three words of second chunk
 	chunk2start = list(unpack('<III', data[64:76]))
-	if False:
-		a0 = bytereverse(a0)
-		a1 = bytereverse(a1)
-		a2 = bytereverse(a2)
-		e0 = bytereverse(e0)
-		e1 = bytereverse(e1)
-		e2 = bytereverse(e2)
-	
-	# build and return array
-	return chunk2start + [a1, a0, e2, e1, e0] + midstate + [a2]
 
-	# bitcoin block struct:
-	#   int nVersion;
-	#   uint256 hashPrevBlock;
-	#   uint256 hashMerkleRoot;
-	#   unsigned int nTime;
-	#   unsigned int nBits;
-	#   unsigned int nNonce;
+	# initialize working variables to current hash value
+	a = h0
+	b = h1
+	c = h2
+	d = h3
+	e = h4
+	f = h5
+	g = h6
+	h = h7
+
+	# first 3 rounds of compression function main loop
+	for i in range(3):
+		t1 = addu32(h, E1(e), CH(e,f,g), K[i], chunk2start[i])
+		t2 = addu32(E0(a), MAJ(a,b,c))
+		h = g
+		g = f
+		f = e
+		e = addu32(d, t1)
+		d = c
+		c = b
+		b = a
+		a = addu32(t1, t2)
+		if i == 0: a0 = a; e0 = e
+		if i == 1: a1 = a; e1 = e
+		if i == 2: a2 = a; e2 = e
+
+	# return Avalon formatted data
+	return chunk2start + [a1, a0, e2, e1, e0] + midstate + [a2]
