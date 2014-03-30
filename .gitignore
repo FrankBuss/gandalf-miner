@@ -2,7 +2,6 @@
 *.log
 *.svf
 *.scr
-*.cmd
 *.bak
 *.lso
 *.elf
